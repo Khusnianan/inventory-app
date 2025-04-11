@@ -91,5 +91,6 @@ if menu == "📋 Daftar Barang":
 elif menu == "➕ Tambah Barang":
     tambah_barang()
 elif menu == "📥 Transaksi Barang":
-    transaksi_barang()\elif menu == "📊 Rekap Stok":
+    transaksi_barang()
+elif menu == "📊 Rekap Stok":
     rekap_stok()
