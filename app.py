@@ -4,14 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # --- Config & Styling ---
-st.set_page_config(page_title="Inventory", page_icon="📦", layout="wide")
-
-st.markdown("""
-    <style>
-    .stButton>button { background-color: #4CAF50; color: white; }
-    .stForm>form { background-color: #ffffff; padding: 20px; border-radius: 10px; }
-    </style>
-""", unsafe_allow_html=True)
+st.set_page_config(page_title="Inventory App", page_icon="📦", layout="wide")
 
 # --- Koneksi DB ---
 def get_connection():
@@ -32,131 +25,134 @@ if "logged_in" not in st.session_state:
     st.session_state.role = None
 
 if not st.session_state.logged_in:
-    st.title("🔐 Login Inventory System")
+    st.title("🔐 Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
-    login = st.button("Login")
-
-    if login:
-        cur.execute("SELECT role FROM users WHERE username = %s AND password = %s", (username, password))
+    if st.button("Login"):
+        cur.execute("SELECT role FROM users WHERE username=%s AND password=%s", (username, password))
         result = cur.fetchone()
         if result:
             st.session_state.logged_in = True
             st.session_state.role = result[0]
-            st.success(f"✅ Login sebagai {st.session_state.role.upper()}")
             st.rerun()
         else:
-            st.error("❌ Username atau password salah.")
+            st.error("❌ Username/password salah.")
     st.stop()
 
 # --- Sidebar ---
-st.sidebar.title("📂 Menu")
-menu = st.sidebar.radio("Navigasi", ["Dashboard", "Transaksi In", "Transaksi Out", "Manajemen Stok"])
-
-st.sidebar.markdown("## 👤 Login Info")
-st.sidebar.markdown(f"**Role:** `{st.session_state.role}`")
+menu = st.sidebar.radio("📂 Menu", ["Dashboard", "Transaksi In", "Transaksi Out", "Manajemen Stok"])
+st.sidebar.markdown(f"**👤 Role:** `{st.session_state.role}`")
 if st.sidebar.button("🚪 Logout"):
     st.session_state.logged_in = False
-    st.session_state.role = None
     st.rerun()
 
-# --- Dashboard / Home ---
+# --- Dashboard ---
 if menu == "Dashboard":
     st.title("📦 Dashboard Inventory")
-    st.caption("Kelola data barang masuk & keluar dengan mudah dan aman.")
-
-    # Registrasi user baru
     if st.session_state.role == "admin":
-        with st.expander("📝 Registrasi User Baru"):
-            st.subheader("Buat Akun Baru")
+        with st.expander("📝 Registrasi User"):
             new_user = st.text_input("Username Baru")
             new_pass = st.text_input("Password", type="password")
             new_role = st.selectbox("Role", ["admin", "user"])
-            create_btn = st.button("Buat Akun")
-
-            if create_btn and new_user and new_pass:
+            if st.button("Buat Akun"):
                 try:
                     cur.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
                                 (new_user, new_pass, new_role))
                     conn.commit()
-                    st.success(f"✅ Akun `{new_user}` berhasil dibuat.")
+                    st.success("✅ Akun berhasil dibuat.")
                     st.rerun()
-                except psycopg2.errors.UniqueViolation:
-                    st.error("❌ Username sudah digunakan.")
+                except:
                     conn.rollback()
+                    st.error("❌ Username sudah ada.")
 
-# --- Transaksi IN ---
+# --- Transaksi In ---
 if menu == "Transaksi In":
     st.title("📥 Transaksi Masuk")
-
-    cur.execute("SELECT id, nama FROM barang ORDER BY nama")
-    barang_list = cur.fetchall()
-    barang_dict = {f"{nama} (ID:{id})": id for id, nama in barang_list}
-
-    selected = st.selectbox("Pilih Barang", list(barang_dict.keys()))
+    nama_barang = st.text_input("Nama Barang Baru / Lama")
     jumlah = st.number_input("Jumlah Masuk", min_value=1, step=1)
-    simpan = st.button("💾 Simpan Transaksi Masuk")
+    if st.button("💾 Simpan Transaksi Masuk"):
+        # Cek apakah barang sudah ada
+        cur.execute("SELECT id FROM barang WHERE LOWER(nama) = LOWER(%s)", (nama_barang,))
+        barang = cur.fetchone()
 
-    if simpan:
-        barang_id = barang_dict[selected]
-        cur.execute("INSERT INTO transaksi (tipe, barang_id, jumlah) VALUES ('in', %s, %s)", (barang_id, jumlah))
+        if barang:
+            barang_id = barang[0]
+        else:
+            cur.execute("INSERT INTO barang (nama, stok, tanggal) VALUES (%s, %s, %s)",
+                        (nama_barang, 0, datetime.now()))
+            conn.commit()
+            cur.execute("SELECT id FROM barang WHERE nama = %s", (nama_barang,))
+            barang_id = cur.fetchone()[0]
+
+        cur.execute("INSERT INTO transaksi (tipe, barang_id, jumlah) VALUES ('in', %s, %s)",
+                    (barang_id, jumlah))
         cur.execute("UPDATE barang SET stok = stok + %s WHERE id = %s", (jumlah, barang_id))
         conn.commit()
-        st.success("✅ Transaksi masuk disimpan.")
+        st.success("✅ Transaksi masuk berhasil disimpan.")
         st.rerun()
 
-# --- Transaksi OUT ---
+# --- Transaksi Out ---
 if menu == "Transaksi Out":
     st.title("📤 Transaksi Keluar")
-
     cur.execute("SELECT id, nama, stok FROM barang ORDER BY nama")
     barang_list = cur.fetchall()
     barang_dict = {f"{nama} (stok: {stok})": (id, stok) for id, nama, stok in barang_list}
-
     selected = st.selectbox("Pilih Barang", list(barang_dict.keys()))
     jumlah = st.number_input("Jumlah Keluar", min_value=1, step=1)
-    kirim = st.button("📤 Simpan Transaksi Keluar")
-
-    if kirim:
+    if st.button("📤 Simpan Transaksi Keluar"):
         barang_id, stok_tersedia = barang_dict[selected]
         if jumlah > stok_tersedia:
             st.error("❌ Stok tidak cukup.")
         else:
-            cur.execute("INSERT INTO transaksi (tipe, barang_id, jumlah) VALUES ('out', %s, %s)", (barang_id, jumlah))
+            cur.execute("INSERT INTO transaksi (tipe, barang_id, jumlah) VALUES ('out', %s, %s)",
+                        (barang_id, jumlah))
             cur.execute("UPDATE barang SET stok = stok - %s WHERE id = %s", (jumlah, barang_id))
             conn.commit()
-            st.success("✅ Transaksi keluar berhasil disimpan.")
+            st.success("✅ Transaksi keluar disimpan.")
             st.rerun()
 
 # --- Manajemen Stok ---
 if menu == "Manajemen Stok":
-    st.title("📦 Manajemen Stok Barang")
-
+    st.title("📦 Manajemen Stok")
     cur.execute("SELECT * FROM barang ORDER BY id")
-    df = pd.DataFrame(cur.fetchall(), columns=["id", "nama", "stok", "tanggal"])
-    st.dataframe(df, use_container_width=True)
+    rows = cur.fetchall()
+    df = pd.DataFrame(rows, columns=["id", "nama", "stok", "tanggal"])
 
-    if st.session_state.role == "admin":
-        with st.expander("✏️ Edit Barang"):
-            pilih = st.selectbox("Pilih Barang", df["id"].astype(str) + " - " + df["nama"])
-            barang_id = int(pilih.split(" - ")[0])
-            cur.execute("SELECT nama, stok FROM barang WHERE id = %s", (barang_id,))
-            nama_lama, stok_lama = cur.fetchone()
+    for _, row in df.iterrows():
+        col1, col2, col3, col4, col5 = st.columns([1, 4, 2, 3, 1])
+        col1.write(row["id"])
+        col2.write(row["nama"])
+        col3.write(row["stok"])
+        col4.write(str(row["tanggal"].date()))
 
-            with st.form("form_edit_stok"):
-                nama_baru = st.text_input("Nama Barang", value=nama_lama)
-                stok_baru = st.number_input("Stok", value=stok_lama, min_value=0, step=1)
-                simpan_edit = st.form_submit_button("💾 Simpan Perubahan")
+        # Ikon Edit dan Hapus (admin only)
+        if st.session_state.role == "admin":
+            edit_key = f"edit_{row['id']}"
+            delete_key = f"delete_{row['id']}"
 
-                if simpan_edit:
-                    cur.execute("UPDATE barang SET nama = %s, stok = %s WHERE id = %s",
-                                (nama_baru, stok_baru, barang_id))
-                    conn.commit()
-                    st.success("✅ Barang berhasil diperbarui.")
-                    st.rerun()
-    else:
-        st.info("👀 Hanya admin yang bisa mengedit barang.")
+            if col5.button("✏️", key=edit_key):
+                st.session_state[f"edit_{row['id']}"] = True
+            if col5.button("🗑️", key=delete_key):
+                cur.execute("DELETE FROM barang WHERE id = %s", (row["id"],))
+                conn.commit()
+                st.success(f"✅ Barang ID {row['id']} dihapus.")
+                st.rerun()
 
-# --- Tutup koneksi DB ---
+            # Form edit (jika diklik)
+            if st.session_state.get(f"edit_{row['id']}", False):
+                with st.expander(f"Edit Barang ID {row['id']}"):
+                    with st.form(f"form_edit_{row['id']}"):
+                        nama_baru = st.text_input("Nama", value=row["nama"])
+                        stok_baru = st.number_input("Stok", value=row["stok"], min_value=0)
+                        submit = st.form_submit_button("💾 Simpan")
+                        if submit:
+                            cur.execute("UPDATE barang SET nama=%s, stok=%s WHERE id=%s",
+                                        (nama_baru, stok_baru, row["id"]))
+                            conn.commit()
+                            st.success("✅ Barang berhasil diperbarui.")
+                            st.session_state[f"edit_{row['id']}"] = False
+                            st.rerun()
+
+# --- Tutup koneksi ---
 cur.close()
 conn.close()
