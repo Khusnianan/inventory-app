@@ -3,6 +3,34 @@ import psycopg2
 import pandas as pd
 from datetime import datetime
 
+# --- Simulasi login user ---
+CREDENTIALS = {
+    "admin": {"password": "admin123", "role": "admin"},
+    "user": {"password": "user123", "role": "user"}
+}
+
+# --- Form login ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.role = None
+
+if not st.session_state.logged_in:
+    st.title("🔐 Login Inventory System")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    login = st.button("Login")
+
+    if login:
+        user = CREDENTIALS.get(username)
+        if user and user["password"] == password:
+            st.session_state.logged_in = True
+            st.session_state.role = user["role"]
+            st.success(f"Berhasil login sebagai {st.session_state.role.upper()}")
+            st.experimental_rerun()
+        else:
+            st.error("❌ Username atau password salah.")
+    st.stop()
+    
 # --- KONEKSI DB ---
 def get_connection():
     return psycopg2.connect(
@@ -17,6 +45,22 @@ conn = get_connection()
 cur = conn.cursor()
 
 st.title("📦 Inventory Barang")
+
+# hanya admin bisa tambah barang
+if st.session_state.role == "admin":
+    with st.form("form_barang"):
+        st.subheader("➕ Tambah Barang")
+        nama = st.text_input("Nama Barang")
+        stok = st.number_input("Jumlah Stok", min_value=0, step=1)
+        submitted = st.form_submit_button("Tambah Barang")
+
+        if submitted and nama:
+            tanggal = datetime.now().strftime('%Y-%m-%d')
+            cur.execute("INSERT INTO barang (nama, stok, tanggal) VALUES (%s, %s, %s)",
+                        (nama, stok, tanggal))
+            conn.commit()
+            st.success("✅ Barang berhasil ditambahkan!")
+            st.experimental_rerun()
 
 # --- TAMBAH BARANG ---
 with st.form("form_barang"):
@@ -47,11 +91,14 @@ for index, row in df.iterrows():
     col2.write(row["nama"])
     col3.write(row["stok"])
     col4.write(row["tanggal"])
-    if col5.button("🗑️ Hapus", key=f"hapus_{row['id']}"):
-        cur.execute("DELETE FROM barang WHERE id = %s", (row["id"],))
-        conn.commit()
-        st.success(f"Barang ID {row['id']} dihapus.")
-        st.experimental_rerun()
+
+    # Hanya admin yang bisa lihat tombol hapus
+    if st.session_state.role == "admin":
+        if col5.button("🗑️ Hapus", key=f"hapus_{row['id']}"):
+            cur.execute("DELETE FROM barang WHERE id = %s", (row["id"],))
+            conn.commit()
+            st.success(f"Barang ID {row['id']} dihapus.")
+            st.experimental_rerun()
 
 # --- EDIT BARANG ---
 st.subheader("✏️ Edit Barang")
