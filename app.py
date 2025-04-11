@@ -1,13 +1,24 @@
-def test_connection():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT current_date;")
-    result = cur.fetchone()
-    st.success(f"Koneksi berhasil! Hari ini: {result[0]}")
-    cur.close()
-    conn.close()
+import streamlit as st
+import psycopg2
+import pandas as pd
 
-# Di dalam Streamlit layout:
-st.title("Test Koneksi DB")
-if st.button("Cek Koneksi"):
-    test_connection()
+# Koneksi ke Railway Postgres
+conn = psycopg2.connect(
+    host="shuttle.proxy.rlwy.net",
+    database="railway",
+    user="postgres",
+    password="RNCRzYyNwkvCmYnyJtJUOfrxwqWXpzjh",
+    port=25419
+)
+cur = conn.cursor()
+
+# Ambil data dari tabel 'barang'
+cur.execute("SELECT * FROM barang;")
+rows = cur.fetchall()
+df = pd.DataFrame(rows, columns=['id', 'nama', 'stok', 'tanggal'])
+
+st.title("📦 Inventory Barang")
+st.dataframe(df)
+
+cur.close()
+conn.close()
