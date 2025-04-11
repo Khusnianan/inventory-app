@@ -8,7 +8,7 @@ def get_connection():
     return mysql.connector.connect(
         host="localhost",         # ganti jika bukan lokal
         user="root",              # ganti user Anda
-        password="password",      # ganti password Anda
+        password="",      # ganti password Anda
         database="inventory_db"   # nama database
     )
 
