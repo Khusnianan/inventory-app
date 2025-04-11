@@ -38,8 +38,36 @@ if not st.session_state.logged_in:
         else:
             st.error("❌ Username atau password salah.")
     st.stop()
+    
+# --- Tombol Logout ---
+st.sidebar.title("👤 Akun")
+st.sidebar.markdown(f"Login sebagai: `{st.session_state.role}`")
+if st.sidebar.button("🚪 Logout"):
+    st.session_state.logged_in = False
+    st.session_state.role = None
+    st.rerun()
 
 st.title("📦 Inventory Barang")
+
+# --- Registrasi User Baru (admin only) ---
+if st.session_state.role == "admin":
+    with st.expander("📝 Registrasi User Baru"):
+        st.subheader("Buat Akun Baru")
+        new_user = st.text_input("Username Baru")
+        new_pass = st.text_input("Password", type="password")
+        new_role = st.selectbox("Role", ["admin", "user"])
+        create_btn = st.button("Buat Akun")
+
+        if create_btn and new_user and new_pass:
+            try:
+                cur.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
+                            (new_user, new_pass, new_role))
+                conn.commit()
+                st.success(f"✅ Akun `{new_user}` berhasil dibuat sebagai `{new_role}`!")
+                st.rerun()
+            except psycopg2.errors.UniqueViolation:
+                st.error("❌ Username sudah digunakan.")
+                conn.rollback()
 
 # --- Tambah Barang (admin only) ---
 if st.session_state.role == "admin":
