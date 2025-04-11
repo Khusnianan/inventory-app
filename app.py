@@ -3,7 +3,18 @@ import psycopg2
 import pandas as pd
 from datetime import datetime
 
-# --- Koneksi ke DB ---
+# --- Config & Styling ---
+st.set_page_config(page_title="Inventory Barang", page_icon="📦", layout="wide")
+
+st.markdown("""
+    <style>
+    .main { background-color: #f9f9f9; padding: 20px; border-radius: 10px; }
+    .stButton>button { background-color: #4CAF50; color: white; }
+    .stForm>form { background-color: #ffffff; padding: 20px; border-radius: 10px; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- Koneksi DB ---
 def get_connection():
     return psycopg2.connect(
         host=st.secrets["DB_HOST"],
@@ -16,7 +27,7 @@ def get_connection():
 conn = get_connection()
 cur = conn.cursor()
 
-# --- Login System with DB ---
+# --- Login ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -38,18 +49,23 @@ if not st.session_state.logged_in:
         else:
             st.error("❌ Username atau password salah.")
     st.stop()
-    
-# --- Tombol Logout ---
-st.sidebar.title("👤 Akun")
-st.sidebar.markdown(f"Login sebagai: `{st.session_state.role}`")
+
+# --- Sidebar ---
+st.sidebar.markdown("## 👤 Informasi Login")
+st.sidebar.markdown(f"**Role:** `{st.session_state.role}`")
 if st.sidebar.button("🚪 Logout"):
     st.session_state.logged_in = False
     st.session_state.role = None
     st.rerun()
+st.sidebar.markdown("---")
+st.sidebar.caption("Dibuat dengan ❤️ menggunakan Streamlit + PostgreSQL (Railway)")
 
-st.title("📦 Inventory Barang")
+# --- Judul Utama ---
+st.markdown("<h1 style='color: #4CAF50;'>📦 Aplikasi Manajemen Inventory</h1>", unsafe_allow_html=True)
+st.markdown("<p style='font-size:16px;'>Kelola data barang masuk & keluar dengan mudah dan aman.</p>", unsafe_allow_html=True)
+st.markdown("---")
 
-# --- Registrasi User Baru (admin only) ---
+# --- Form Registrasi (admin only) ---
 if st.session_state.role == "admin":
     with st.expander("📝 Registrasi User Baru"):
         st.subheader("Buat Akun Baru")
@@ -69,73 +85,75 @@ if st.session_state.role == "admin":
                 st.error("❌ Username sudah digunakan.")
                 conn.rollback()
 
-# --- Tambah Barang (admin only) ---
+# --- Form Tambah Barang (admin only) ---
 if st.session_state.role == "admin":
-    with st.form("form_barang"):
-        st.subheader("➕ Tambah Barang")
-        nama = st.text_input("Nama Barang")
-        stok = st.number_input("Jumlah Stok", min_value=0, step=1)
-        submitted = st.form_submit_button("Tambah Barang")
+    with st.expander("➕ Tambah Barang"):
+        with st.form("form_barang"):
+            nama = st.text_input("Nama Barang")
+            stok = st.number_input("Jumlah Stok", min_value=0, step=1)
+            submitted = st.form_submit_button("Tambah Barang")
 
-        if submitted and nama:
-            tanggal = datetime.now().strftime('%Y-%m-%d')
-            cur.execute("INSERT INTO barang (nama, stok, tanggal) VALUES (%s, %s, %s)",
-                        (nama, stok, tanggal))
-            conn.commit()
-            st.success("✅ Barang berhasil ditambahkan!")
-            st.rerun()
+            if submitted and nama:
+                tanggal = datetime.now().strftime('%Y-%m-%d')
+                cur.execute("INSERT INTO barang (nama, stok, tanggal) VALUES (%s, %s, %s)",
+                            (nama, stok, tanggal))
+                conn.commit()
+                st.success("✅ Barang berhasil ditambahkan!")
+                st.rerun()
 
-# --- Tampilkan Barang ---
+# --- Tampilkan Daftar Barang ---
 st.subheader("📋 Daftar Barang")
 
 cur.execute("SELECT * FROM barang ORDER BY id DESC")
 rows = cur.fetchall()
 df = pd.DataFrame(rows, columns=['id', 'nama', 'stok', 'tanggal'])
 
-for index, row in df.iterrows():
-    col1, col2, col3, col4, col5 = st.columns([1.5, 3, 2, 3, 2])
-    col1.write(row["id"])
-    col2.write(row["nama"])
-    col3.write(row["stok"])
-    col4.write(row["tanggal"])
+if df.empty:
+    st.info("Belum ada data barang.")
+else:
+    for index, row in df.iterrows():
+        col1, col2, col3, col4, col5 = st.columns([1.5, 3, 2, 3, 2])
+        col1.write(row["id"])
+        col2.write(row["nama"])
+        col3.write(row["stok"])
+        col4.write(row["tanggal"])
 
-    # Hapus barang (admin only)
-    if st.session_state.role == "admin":
-        if col5.button("🗑️ Hapus", key=f"hapus_{row['id']}"):
-            cur.execute("DELETE FROM barang WHERE id = %s", (row["id"],))
-            conn.commit()
-            st.success(f"Barang ID {row['id']} dihapus.")
-            st.rerun()
+        if st.session_state.role == "admin":
+            if col5.button("🗑️ Hapus", key=f"hapus_{row['id']}"):
+                cur.execute("DELETE FROM barang WHERE id = %s", (row["id"],))
+                conn.commit()
+                st.success(f"Barang ID {row['id']} dihapus.")
+                st.rerun()
 
 # --- Edit Barang (admin only) ---
 if st.session_state.role == "admin":
-    st.subheader("✏️ Edit Barang")
-    cur.execute("SELECT id, nama FROM barang ORDER BY id")
-    barang_list = cur.fetchall()
+    with st.expander("✏️ Edit Barang"):
+        cur.execute("SELECT id, nama FROM barang ORDER BY id")
+        barang_list = cur.fetchall()
 
-    if barang_list:
-        barang_dict = {f"{id} - {nama}": id for id, nama in barang_list}
-        selected = st.selectbox("Pilih barang yang ingin diedit", list(barang_dict.keys()))
+        if barang_list:
+            barang_dict = {f"{id} - {nama}": id for id, nama in barang_list}
+            selected = st.selectbox("Pilih barang yang ingin diedit", list(barang_dict.keys()))
 
-        if selected:
-            id_barang = barang_dict[selected]
-            cur.execute("SELECT nama, stok FROM barang WHERE id = %s", (id_barang,))
-            current_nama, current_stok = cur.fetchone()
+            if selected:
+                id_barang = barang_dict[selected]
+                cur.execute("SELECT nama, stok FROM barang WHERE id = %s", (id_barang,))
+                current_nama, current_stok = cur.fetchone()
 
-            with st.form("form_edit"):
-                new_nama = st.text_input("Nama Barang", value=current_nama)
-                new_stok = st.number_input("Stok", value=current_stok, min_value=0, step=1)
-                update = st.form_submit_button("💾 Simpan Perubahan")
+                with st.form("form_edit"):
+                    new_nama = st.text_input("Nama Barang", value=current_nama)
+                    new_stok = st.number_input("Stok", value=current_stok, min_value=0, step=1)
+                    update = st.form_submit_button("💾 Simpan Perubahan")
 
-                if update:
-                    cur.execute("UPDATE barang SET nama = %s, stok = %s WHERE id = %s",
-                                (new_nama, new_stok, id_barang))
-                    conn.commit()
-                    st.success("✅ Data barang berhasil diperbarui!")
-                    st.rerun()
-    else:
-        st.info("Belum ada data barang untuk diedit.")
+                    if update:
+                        cur.execute("UPDATE barang SET nama = %s, stok = %s WHERE id = %s",
+                                    (new_nama, new_stok, id_barang))
+                        conn.commit()
+                        st.success("✅ Data barang berhasil diperbarui!")
+                        st.rerun()
+        else:
+            st.info("Belum ada data barang untuk diedit.")
 
-# --- Tutup koneksi ---
+# --- Tutup koneksi DB ---
 cur.close()
 conn.close()
